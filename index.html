@@ -6,6 +6,20 @@
   <title>班級任務挑戰記錄表</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase SDK (Modular CDN) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    window.FirebaseLib = {
+      initializeApp,
+      getFirestore,
+      doc,
+      onSnapshot,
+      setDoc
+    };
+    window.dispatchEvent(new Event('firebase-lib-ready'));
+  </script>
   <script>
     tailwind.config = {
       theme: {
@@ -49,35 +63,50 @@
   <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
       <div class="flex items-center space-x-3">
-        <!-- 班級專屬圖示 (等比例完整容納，維持 40x40 規格不擠壓排版) -->
-        <div class="w-10 h-10 rounded-xl shadow-md border border-slate-200 bg-white flex items-center justify-center p-0.5 shrink-0 overflow-hidden">
+        <!-- 完整呈現頭像圖示 (logo.png) -->
+        <div class="w-10 h-10 rounded-xl bg-white border border-slate-200 p-0.5 flex items-center justify-center shadow-sm overflow-hidden shrink-0">
           <img 
             src="logo.png" 
-            alt="班級任務圖示" 
-            class="max-h-full max-w-full object-contain"
-            onerror="this.onerror=null; this.src='https://placehold.co/40x40/6366f1/ffffff?text=班';"
+            alt="Logo" 
+            class="w-full h-full object-contain"
+            onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'w-full h-full bg-indigo-600 text-white rounded-lg flex items-center justify-center font-bold text-xs\'>班級</div>';"
           >
         </div>
         <div>
           <h1 class="text-lg sm:text-xl font-bold text-slate-800 leading-tight">班級任務挑戰記錄表</h1>
-          <p class="text-xs text-slate-500 hidden sm:block">體育鍛鍊與益智闖關管理系統</p>
+          <div class="flex items-center space-x-2">
+            <p class="text-xs text-slate-500 hidden sm:block">體育鍛鍊與益智闖關管理系統</p>
+            <!-- 雲端同步狀態標籤 -->
+            <div id="sync-status-badge" class="flex items-center space-x-1 text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
+              <span class="w-2 h-2 rounded-full bg-slate-400" id="sync-dot"></span>
+              <span id="sync-text">連線中...</span>
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- 操作按鈕群 -->
       <div class="flex items-center space-x-2">
+        <!-- 登入管理者狀態切換 -->
+        <div id="admin-status-container">
+          <button onclick="openAdminLoginModal()" id="btn-admin-login" class="inline-flex items-center px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition">
+            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+            <span>管理登入</span>
+          </button>
+        </div>
+
         <button onclick="exportData()" class="inline-flex items-center px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors border border-emerald-200" title="下載記錄備份檔 (JSON)">
           <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-          <span class="hidden sm:inline">下載記錄</span>
+          <span class="hidden sm:inline">下載備份</span>
         </button>
 
-        <label class="inline-flex items-center px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 transition-colors border border-sky-200 cursor-pointer" title="上傳記錄備份檔 (JSON)">
+        <label id="upload-record-label" class="hidden inline-flex items-center px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 transition-colors border border-sky-200 cursor-pointer" title="上傳記錄備份檔 (JSON)">
           <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
           <span class="hidden sm:inline">上傳記錄</span>
           <input type="file" id="fileInput" accept=".json" class="hidden" onchange="importData(event)">
         </label>
 
-        <button onclick="openHelpModal()" class="p-2 text-slate-500 hover:text-slate-700 rounded-lg hover:bg-slate-100" title="GitHub 佈署與使用指引">
+        <button onclick="openHelpModal()" class="p-2 text-slate-500 hover:text-slate-700 rounded-lg hover:bg-slate-100" title="系統使用說明">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         </button>
       </div>
@@ -126,18 +155,14 @@
 
     <!-- 2. 體育活動記錄 (Emerald 綠色風格) -->
     <section id="view-sports" class="tab-view hidden space-y-6">
-      <!-- 控制列：項目切換、週次切換、新增項目 -->
       <div class="bg-white p-4 rounded-xl border border-emerald-200 shadow-sm flex flex-wrap gap-4 items-center justify-between">
         <div class="flex flex-wrap items-center gap-3">
-          <!-- 項目下拉選單 -->
           <div class="flex items-center space-x-2">
             <label class="text-xs font-semibold text-emerald-800">運動項目：</label>
             <select id="sports-item-select" onchange="renderSportsTable()" class="bg-emerald-50/50 border border-emerald-300 text-emerald-900 text-sm rounded-lg px-3 py-1.5 focus:ring-emerald-500 focus:border-emerald-500 font-medium">
-              <!-- 動態產生 -->
             </select>
           </div>
 
-          <!-- 週次選單 -->
           <div class="flex items-center space-x-2">
             <label class="text-xs font-semibold text-emerald-800">週次：</label>
             <div class="flex items-center space-x-1">
@@ -145,7 +170,6 @@
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
               </button>
               <select id="sports-week-select" onchange="renderSportsTable()" class="bg-emerald-50/50 border border-emerald-300 text-emerald-900 text-sm rounded-lg px-3 py-1.5 focus:ring-emerald-500 focus:border-emerald-500 font-medium">
-                <!-- 1 ~ 21 週動態產生 -->
               </select>
               <button onclick="changeWeek(1)" class="p-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
@@ -154,8 +178,7 @@
           </div>
         </div>
 
-        <!-- 動作按鈕 -->
-        <div class="flex items-center space-x-2">
+        <div class="flex items-center space-x-2 admin-only">
           <button onclick="openAddSportsItemModal()" class="inline-flex items-center px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition">
             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
             新增體育項目
@@ -183,12 +206,11 @@
               </tr>
             </thead>
             <tbody id="sports-table-body" class="divide-y divide-emerald-100">
-              <!-- 動態生成每位學生的輸入行 -->
             </tbody>
           </table>
         </div>
         <div class="p-3 bg-emerald-50/40 border-t border-emerald-100 text-xs text-slate-500 flex justify-between items-center">
-          <span>💡 提示：輸入數值後即時自動計算每週成果與總累計，支援浮點數或整數。</span>
+          <span id="sports-permission-hint">💡 訪客模式：資料唯讀中。管理者登入後即可編輯與修改。</span>
           <span id="sports-unit-hint" class="font-semibold text-emerald-800">單位：下</span>
         </div>
       </div>
@@ -196,13 +218,11 @@
 
     <!-- 3. 益智遊戲闖關 (Amber 暖橘黃風格) -->
     <section id="view-puzzles" class="tab-view hidden space-y-6">
-      <!-- 控制列：項目選擇、學生切換、新增益智項目 -->
       <div class="bg-white p-4 rounded-xl border border-amber-200 shadow-sm flex flex-wrap gap-4 items-center justify-between">
         <div class="flex flex-wrap items-center gap-3">
           <div class="flex items-center space-x-2">
             <label class="text-xs font-semibold text-amber-800">益智遊戲：</label>
             <select id="puzzle-item-select" onchange="renderPuzzleView()" class="bg-amber-50/50 border border-amber-300 text-amber-900 text-sm rounded-lg px-3 py-1.5 focus:ring-amber-500 focus:border-amber-500 font-medium">
-              <!-- 動態產生 -->
             </select>
           </div>
 
@@ -217,12 +237,11 @@
           <div id="puzzle-student-select-wrap" class="flex items-center space-x-2">
             <label class="text-xs font-semibold text-amber-800">學生：</label>
             <select id="puzzle-student-select" onchange="renderPuzzleSingleStudent()" class="bg-amber-50/50 border border-amber-300 text-amber-900 text-sm rounded-lg px-3 py-1.5 focus:ring-amber-500 focus:border-amber-500 font-medium">
-              <!-- 動態學生 -->
             </select>
           </div>
         </div>
 
-        <div class="flex items-center space-x-2">
+        <div class="flex items-center space-x-2 admin-only">
           <button onclick="openAddPuzzleItemModal()" class="inline-flex items-center px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 shadow-sm transition">
             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
             新增益智項目
@@ -239,7 +258,6 @@
 
       <!-- 益智遊戲顯示容器 (單人闖關盤 或 全班矩陣) -->
       <div id="puzzle-content-container">
-        <!-- 動態渲染 -->
       </div>
     </section>
 
@@ -253,19 +271,18 @@
             </h2>
             <p class="text-xs text-slate-500 mt-0.5">可自由增刪學生或調整座號與姓名，預設為 6 位學生。</p>
           </div>
-          <button onclick="addNewStudentPrompt()" class="inline-flex items-center px-3.5 py-2 text-sm font-medium rounded-xl bg-purple-600 text-white hover:bg-purple-700 shadow-sm transition">
+          <button onclick="addNewStudentPrompt()" class="inline-flex items-center px-3.5 py-2 text-sm font-medium rounded-xl bg-purple-600 text-white hover:bg-purple-700 shadow-sm transition admin-only">
             <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
             新增學生
           </button>
         </div>
 
         <div id="student-list-container" class="divide-y divide-purple-100">
-          <!-- 學生名單列表 -->
         </div>
 
         <div class="mt-8 pt-6 border-t border-purple-100 flex items-center justify-between text-xs text-slate-500">
           <span>注意：刪除學生將同時移除該名學生之所有體育與益智歷史紀錄。</span>
-          <button onclick="resetToDefaultData()" class="text-rose-500 hover:text-rose-700 underline font-medium">重設為初始示範資料</button>
+          <button onclick="resetToDefaultData()" class="text-rose-500 hover:text-rose-700 underline font-medium admin-only">重設為初始示範資料</button>
         </div>
       </div>
     </section>
@@ -277,7 +294,6 @@
       <h3 id="modal-title" class="text-lg font-bold text-slate-800 mb-2">標題</h3>
       <div id="modal-body" class="text-sm text-slate-600 mb-6">內容</div>
       <div id="modal-actions" class="flex justify-end space-x-3">
-        <!-- 動態按鈕 -->
       </div>
     </div>
   </div>
@@ -292,11 +308,22 @@
 
   <script>
     /* ==========================================================================
-       1. 狀態模型與初始化資料 (核心引擎)
+       1. 狀態模型與 Firebase 內建配置
        ========================================================================== */
-    const DEFAULT_STORAGE_KEY = 'CLASS_TASK_TRACKER_V1';
+    const DEFAULT_STORAGE_KEY = 'CLASS_TASK_TRACKER_V2';
+    const ADMIN_SESSION_KEY = 'CLASS_TRACKER_IS_ADMIN';
+
+    const BUILTIN_FIREBASE_CONFIG = {
+      apiKey: "AIzaSyBQ3k7PtxOKE2mCfM9E8TB8wGiQapWQGzk",
+      authDomain: "my-class-tracker-a88d4.firebaseapp.com",
+      projectId: "my-class-tracker-a88d4",
+      storageBucket: "my-class-tracker-a88d4.firebasestorage.app",
+      messagingSenderId: "737764956515",
+      appId: "1:737764956515:web:f9396f944d526eb8eadb56"
+    };
 
     const DEFAULT_DATA = {
+      adminPasscode: "Rccbok6869",
       students: [
         { id: "s1", name: "1號 林小明" },
         { id: "s2", name: "2號 陳小華" },
@@ -314,29 +341,26 @@
         { id: "pz2", name: "拼圖魔尺", totalLevels: 100 },
         { id: "pz3", name: "火柴拼圖", totalLevels: 50 }
       ],
-      // 結構: sportsRecords[studentId][itemId][weekNumber] = { mon: 0, tue: 0, wed: 0, thu: 0, fri: 0 }
       sportsRecords: {},
-      // 結構: puzzleRecords[studentId][itemId] = [已完成關卡陣列，例如: [1, 2, 5]]
       puzzleRecords: {}
     };
 
-    // 運行時記憶體狀態
     let appData = null;
+    let isAdmin = false;
+    let db = null;
+    let firestoreDocRef = null;
+    let isCloudSyncActive = false;
 
-    // 載入與初始化
     function initData() {
+      isAdmin = sessionStorage.getItem(ADMIN_SESSION_KEY) === 'true';
+      updateAdminUI();
+
       const cached = localStorage.getItem(DEFAULT_STORAGE_KEY);
       if (cached) {
         try {
           appData = JSON.parse(cached);
-          // 完整性檢驗保護
-          if (!appData.students || !appData.sportsItems || !appData.puzzleItems) {
-            throw new Error("快取資料結構不全");
-          }
-          if (!appData.sportsRecords) appData.sportsRecords = {};
-          if (!appData.puzzleRecords) appData.puzzleRecords = {};
+          if (!appData.students || !appData.sportsItems || !appData.puzzleItems) throw new Error();
         } catch (e) {
-          console.warn("解析快取失敗，載入預設示範資料：", e);
           appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
           seedDemoData();
         }
@@ -344,7 +368,8 @@
         appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
         seedDemoData();
       }
-      saveToStorage();
+
+      initFirebase();
     }
 
     function seedDemoData() {
@@ -363,16 +388,188 @@
       appData.puzzleRecords["s2"]["pz1"] = [1, 2, 3];
     }
 
+    function initFirebase() {
+      if (!window.FirebaseLib) {
+        window.addEventListener('firebase-lib-ready', () => initFirebase(), { once: true });
+        return;
+      }
+
+      const { initializeApp, getFirestore, doc, onSnapshot } = window.FirebaseLib;
+
+      try {
+        updateSyncStatus('connecting', '連線雲端中...');
+        const app = initializeApp(BUILTIN_FIREBASE_CONFIG);
+        db = getFirestore(app);
+        firestoreDocRef = doc(db, "classes", "default_class");
+
+        onSnapshot(firestoreDocRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const remoteData = docSnap.data();
+            if (remoteData && remoteData.students) {
+              appData = remoteData;
+              localStorage.setItem(DEFAULT_STORAGE_KEY, JSON.stringify(appData));
+              refreshCurrentTab();
+            }
+          } else {
+            pushDataToCloud();
+          }
+          isCloudSyncActive = true;
+          updateSyncStatus('connected', '🟢 雲端同步已連線');
+        }, (error) => {
+          console.warn("Firebase 監聽錯誤：", error);
+          isCloudSyncActive = false;
+          updateSyncStatus('error', '🔴 雲端離線 (本機快取)');
+        });
+
+      } catch (err) {
+        console.error("Firebase 初始化失敗：", err);
+        isCloudSyncActive = false;
+        updateSyncStatus('error', '⚪ 離線模式');
+      }
+    }
+
     function saveToStorage() {
       try {
         localStorage.setItem(DEFAULT_STORAGE_KEY, JSON.stringify(appData));
       } catch (e) {
-        console.error("儲存至本機快取失敗：", e);
+        console.error(e);
+      }
+      pushDataToCloud();
+    }
+
+    function pushDataToCloud() {
+      if (firestoreDocRef && window.FirebaseLib) {
+        const { setDoc } = window.FirebaseLib;
+        setDoc(firestoreDocRef, appData, { merge: true }).catch(err => {
+          console.warn("推送至雲端失敗：", err);
+        });
+      }
+    }
+
+    function updateSyncStatus(status, text) {
+      const dot = document.getElementById('sync-dot');
+      const label = document.getElementById('sync-text');
+      if (!dot || !label) return;
+
+      label.textContent = text;
+      dot.className = "w-2 h-2 rounded-full";
+      if (status === 'connected') {
+        dot.classList.add('bg-emerald-500');
+      } else if (status === 'connecting') {
+        dot.classList.add('bg-amber-400');
+      } else {
+        dot.classList.add('bg-slate-400');
       }
     }
 
     /* ==========================================================================
-       2. 頁籤切換與導覽邏輯 (依各標籤配置專屬色系)
+       2. 權限與管理者操作邏輯
+       ========================================================================== */
+    function updateAdminUI() {
+      const adminContainer = document.getElementById('admin-status-container');
+      const uploadRecordLabel = document.getElementById('upload-record-label');
+      const sportsHint = document.getElementById('sports-permission-hint');
+
+      if (isAdmin) {
+        if (adminContainer) {
+          adminContainer.innerHTML = `
+            <div class="flex items-center space-x-1.5">
+              <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                👑 管理者
+              </span>
+              <button onclick="changeAdminPasscodeModal()" class="text-xs px-2 py-1 text-slate-500 hover:text-slate-700 hover:underline" title="修改管理密碼">改密碼</button>
+              <button onclick="logoutAdmin()" class="text-xs px-2 py-1 text-rose-600 hover:text-rose-800 hover:underline">登出</button>
+            </div>
+          `;
+        }
+        if (uploadRecordLabel) uploadRecordLabel.classList.remove('hidden');
+        if (sportsHint) sportsHint.textContent = "💡 管理者模式：輸入數值後即時自動計算並同步至所有裝置。";
+        document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+      } else {
+        if (adminContainer) {
+          adminContainer.innerHTML = `
+            <button onclick="openAdminLoginModal()" id="btn-admin-login" class="inline-flex items-center px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition">
+              <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+              <span>管理登入</span>
+            </button>
+          `;
+        }
+        if (uploadRecordLabel) uploadRecordLabel.classList.add('hidden');
+        if (sportsHint) sportsHint.textContent = "💡 訪客模式：資料唯讀中。管理者登入後即可在線編輯與更新。";
+        document.querySelectorAll('.admin-only').forEach(el => el.classList.add('hidden'));
+      }
+    }
+
+    function openAdminLoginModal() {
+      showModal({
+        title: "管理者登入",
+        bodyHtml: `
+          <div class="space-y-3">
+            <p class="text-xs text-slate-500">請輸入管理者密碼以解鎖線上編輯與名單管理權限：</p>
+            <input id="admin-passcode-input" type="password" placeholder="請輸入密碼" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500">
+          </div>
+        `,
+        confirmText: "登入",
+        confirmClass: "bg-indigo-600 hover:bg-indigo-700 text-white",
+        onConfirm: () => {
+          const input = document.getElementById('admin-passcode-input');
+          const val = input.value.trim();
+          const targetPass = appData.adminPasscode || "Rccbok6869";
+
+          if (val === targetPass) {
+            isAdmin = true;
+            sessionStorage.setItem(ADMIN_SESSION_KEY, 'true');
+            updateAdminUI();
+            refreshCurrentTab();
+            showToast("管理者驗證成功，已解鎖編輯權限！", "🔓");
+            return true;
+          } else {
+            showToast("密碼錯誤，請重新確認！", "❌");
+            return false;
+          }
+        }
+      });
+    }
+
+    function logoutAdmin() {
+      isAdmin = false;
+      sessionStorage.removeItem(ADMIN_SESSION_KEY);
+      updateAdminUI();
+      refreshCurrentTab();
+      showToast("已切換為唯讀訪客模式。", "🔒");
+    }
+
+    function changeAdminPasscodeModal() {
+      if (!isAdmin) return;
+      showModal({
+        title: "變更管理密碼",
+        bodyHtml: `
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">請輸入新密碼</label>
+              <input id="new-admin-pass" type="password" placeholder="請輸入至少4字元的新密碼" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+          </div>
+        `,
+        confirmText: "確認修改",
+        confirmClass: "bg-indigo-600 hover:bg-indigo-700 text-white",
+        onConfirm: () => {
+          const input = document.getElementById('new-admin-pass');
+          const newPass = input.value.trim();
+          if (newPass.length < 4) {
+            showToast("新密碼長度請至少設定4碼！", "⚠️");
+            return false;
+          }
+          appData.adminPasscode = newPass;
+          saveToStorage();
+          showToast("管理密碼已成功更新並同步！", "🔑");
+          return true;
+        }
+      });
+    }
+
+    /* ==========================================================================
+       3. 頁籤切換與視圖渲染
        ========================================================================== */
     let currentTab = 'dashboard';
 
@@ -416,15 +613,19 @@
         activeBtn.classList.add(...TAB_THEMES[tabId].activeClasses);
       }
 
-      // 觸發對應視圖渲染
-      if (tabId === 'dashboard') renderDashboard();
-      if (tabId === 'sports') renderSportsView();
-      if (tabId === 'puzzles') renderPuzzleView();
-      if (tabId === 'students') renderStudentsView();
+      refreshCurrentTab();
+    }
+
+    function refreshCurrentTab() {
+      if (currentTab === 'dashboard') renderDashboard();
+      if (currentTab === 'sports') renderSportsView();
+      if (currentTab === 'puzzles') renderPuzzleView();
+      if (currentTab === 'students') renderStudentsView();
+      updateAdminUI();
     }
 
     /* ==========================================================================
-       3. 儀表板總覽 (Overview)
+       4. 儀表板總覽
        ========================================================================== */
     function renderDashboard() {
       const container = document.getElementById('dashboard-cards-container');
@@ -443,7 +644,6 @@
       }
 
       appData.students.forEach(student => {
-        // 計算體育各項累積數值
         let sportsSummaryHtml = '';
         appData.sportsItems.forEach(item => {
           let total = 0;
@@ -465,7 +665,6 @@
           `;
         });
 
-        // 計算益智遊戲過關百分比
         let puzzleSummaryHtml = '';
         appData.puzzleItems.forEach(item => {
           const cleared = (appData.puzzleRecords[student.id]?.[item.id] || []).length;
@@ -483,7 +682,6 @@
           `;
         });
 
-        // 智慧提取頭像座號標籤
         const numMatch = student.name.match(/\d+/);
         const avatarBadge = numMatch ? `${numMatch[0]}號` : student.name.substring(0, 2);
 
@@ -500,7 +698,6 @@
               </div>
             </div>
 
-            <!-- 體育統計區塊 (翡翠綠風格) -->
             <div class="mb-4">
               <h4 class="text-xs font-semibold uppercase tracking-wider text-emerald-700 mb-2 flex items-center gap-1">
                 <span>🏃</span> 體育累計總量
@@ -510,7 +707,6 @@
               </div>
             </div>
 
-            <!-- 益智挑戰統計區塊 (暖橘黃風格) -->
             <div>
               <h4 class="text-xs font-semibold uppercase tracking-wider text-amber-700 mb-2 flex items-center gap-1">
                 <span>🧩</span> 益智闖關進度
@@ -526,7 +722,7 @@
     }
 
     /* ==========================================================================
-       4. 體育活動業務邏輯 (1~21週)
+       5. 體育活動業務邏輯
        ========================================================================== */
     let currentSportsWeek = 1;
 
@@ -545,7 +741,6 @@
         itemSelect.value = prevVal;
       }
 
-      // 填入週次選單 1~21 週
       const weekSelect = document.getElementById('sports-week-select');
       weekSelect.innerHTML = '';
       for (let w = 1; w <= 21; w++) {
@@ -605,11 +800,8 @@
         }
 
         const weekRecord = appData.sportsRecords[student.id][itemId][currentSportsWeek];
-
-        // 計算本週成果
         const weekSum = days.reduce((sum, d) => sum + (parseFloat(weekRecord[d]) || 0), 0);
 
-        // 計算歷史所有週次總累計
         let allWeeksSum = 0;
         Object.keys(appData.sportsRecords[student.id][itemId]).forEach(w => {
           const wRec = appData.sportsRecords[student.id][itemId][w];
@@ -632,9 +824,14 @@
                 type="number" 
                 min="0" 
                 step="any"
+                ${isAdmin ? '' : 'disabled readonly'}
                 value="${weekRecord[day] !== undefined ? weekRecord[day] : ''}" 
                 placeholder="0"
-                class="w-full text-center py-1 px-2 border border-slate-200 rounded-lg text-slate-800 text-sm focus:bg-emerald-50 focus:border-emerald-400 transition"
+                class="w-full text-center py-1 px-2 border border-slate-200 rounded-lg text-slate-800 text-sm transition ${
+                  isAdmin 
+                    ? 'focus:bg-emerald-50 focus:border-emerald-400' 
+                    : 'bg-slate-50 text-slate-500 cursor-not-allowed border-dashed'
+                }"
                 oninput="handleSportsInput('${student.id}', '${itemId}', ${currentSportsWeek}, '${day}', this.value)"
               >
             </td>
@@ -651,6 +848,7 @@
     }
 
     function handleSportsInput(studentId, itemId, week, day, value) {
+      if (!isAdmin) return;
       if (!appData.sportsRecords[studentId]) appData.sportsRecords[studentId] = {};
       if (!appData.sportsRecords[studentId][itemId]) appData.sportsRecords[studentId][itemId] = {};
       if (!appData.sportsRecords[studentId][itemId][week]) {
@@ -660,7 +858,6 @@
       appData.sportsRecords[studentId][itemId][week][day] = value === '' ? '' : Number(value);
       saveToStorage();
 
-      // 即時單列更新小計
       const weekRecord = appData.sportsRecords[studentId][itemId][week];
       const days = ['mon', 'tue', 'wed', 'thu', 'fri'];
       const weekSum = days.reduce((sum, d) => sum + (parseFloat(weekRecord[d]) || 0), 0);
@@ -682,6 +879,7 @@
     }
 
     function openAddSportsItemModal() {
+      if (!isAdmin) return;
       showModal({
         title: "新增體育活動項目",
         bodyHtml: `
@@ -720,6 +918,7 @@
     }
 
     function deleteCurrentSportsItem() {
+      if (!isAdmin) return;
       const itemSelect = document.getElementById('sports-item-select');
       const itemId = itemSelect ? itemSelect.value : '';
       const target = appData.sportsItems.find(i => i.id === itemId);
@@ -751,7 +950,7 @@
     }
 
     /* ==========================================================================
-       5. 益智遊戲闖關邏輯 (關卡勾選)
+       6. 益智遊戲闖關邏輯
        ========================================================================== */
     function renderPuzzleView() {
       const itemSelect = document.getElementById('puzzle-item-select');
@@ -819,10 +1018,10 @@
                 <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">${escapeHtml(currentStudent.name)}</span>
                 <h3 class="text-xl font-bold text-slate-800">${escapeHtml(currentItem.name)} 關卡挑戰盤</h3>
               </div>
-              <p class="text-xs text-slate-500 mt-1">點擊關卡按鈕即可切換完成狀態。再次點擊可取消勾選。</p>
+              <p class="text-xs text-slate-500 mt-1">${isAdmin ? '點擊關卡按鈕即可切換完成狀態。再次點擊可取消勾選。' : '訪客瀏覽中：關卡為唯讀狀態。'}</p>
             </div>
 
-            <div class="flex items-center space-x-2">
+            <div class="flex items-center space-x-2 admin-only">
               <button onclick="batchClearLevels('${studentId}', '${itemId}', ${total})" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600 shadow-sm transition">
                 全數通關
               </button>
@@ -847,8 +1046,10 @@
               const isDone = completedLevels.has(level);
               return `
                 <button 
-                  onclick="togglePuzzleLevel('${studentId}', '${itemId}', ${level})"
-                  class="h-11 rounded-xl font-bold text-xs sm:text-sm flex flex-col items-center justify-center transition-all transform active:scale-95 border ${
+                  ${isAdmin ? `onclick="togglePuzzleLevel('${studentId}', '${itemId}', ${level})"` : 'disabled'}
+                  class="h-11 rounded-xl font-bold text-xs sm:text-sm flex flex-col items-center justify-center transition-all border ${
+                    isAdmin ? 'transform active:scale-95 cursor-pointer' : 'cursor-default'
+                  } ${
                     isDone 
                       ? 'bg-amber-500 text-white border-amber-600 shadow-sm' 
                       : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-amber-50 hover:border-amber-300'
@@ -863,6 +1064,7 @@
           </div>
         </div>
       `;
+      updateAdminUI();
     }
 
     function renderPuzzleMatrix() {
@@ -896,7 +1098,7 @@
             </td>
             <td class="p-4 text-right">
               <button onclick="switchToSingleStudent('${student.id}')" class="text-xs font-medium text-amber-700 hover:text-amber-900 hover:underline">
-                前往勾選
+                前往查看 / 勾選
               </button>
             </td>
           </tr>
@@ -936,6 +1138,7 @@
     }
 
     function togglePuzzleLevel(studentId, itemId, level) {
+      if (!isAdmin) return;
       if (!appData.puzzleRecords[studentId]) appData.puzzleRecords[studentId] = {};
       if (!appData.puzzleRecords[studentId][itemId]) appData.puzzleRecords[studentId][itemId] = [];
 
@@ -951,6 +1154,7 @@
     }
 
     function batchClearLevels(studentId, itemId, total) {
+      if (!isAdmin) return;
       if (!appData.puzzleRecords[studentId]) appData.puzzleRecords[studentId] = {};
       appData.puzzleRecords[studentId][itemId] = Array.from({ length: total }, (_, i) => i + 1);
       saveToStorage();
@@ -959,6 +1163,7 @@
     }
 
     function batchResetLevels(studentId, itemId) {
+      if (!isAdmin) return;
       if (!appData.puzzleRecords[studentId]) appData.puzzleRecords[studentId] = {};
       appData.puzzleRecords[studentId][itemId] = [];
       saveToStorage();
@@ -967,6 +1172,7 @@
     }
 
     function openAddPuzzleItemModal() {
+      if (!isAdmin) return;
       showModal({
         title: "新增益智遊戲項目",
         bodyHtml: `
@@ -1005,6 +1211,7 @@
     }
 
     function openEditPuzzleItemModal() {
+      if (!isAdmin) return;
       const itemSelect = document.getElementById('puzzle-item-select');
       const itemId = itemSelect ? itemSelect.value : '';
       const target = appData.puzzleItems.find(i => i.id === itemId);
@@ -1045,7 +1252,6 @@
           target.name = newName;
           target.totalLevels = newLevels;
 
-          // 若減少關卡，同步自動濾除超出新關卡上限的通關紀錄
           Object.keys(appData.puzzleRecords).forEach(studentId => {
             if (appData.puzzleRecords[studentId]?.[itemId]) {
               appData.puzzleRecords[studentId][itemId] = appData.puzzleRecords[studentId][itemId].filter(lvl => lvl <= newLevels);
@@ -1061,6 +1267,7 @@
     }
 
     function deleteCurrentPuzzleItem() {
+      if (!isAdmin) return;
       const itemSelect = document.getElementById('puzzle-item-select');
       const itemId = itemSelect ? itemSelect.value : '';
       const target = appData.puzzleItems.find(i => i.id === itemId);
@@ -1092,7 +1299,7 @@
     }
 
     /* ==========================================================================
-       6. 學生名單管理邏輯
+       7. 學生名單管理邏輯
        ========================================================================== */
     function renderStudentsView() {
       const container = document.getElementById('student-list-container');
@@ -1112,21 +1319,26 @@
             <span class="w-7 h-7 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold shrink-0">${index + 1}</span>
             <input 
               type="text" 
+              ${isAdmin ? '' : 'disabled readonly'}
               value="${escapeHtml(student.name)}" 
               onchange="updateStudentName('${student.id}', this.value)" 
-              class="font-semibold text-slate-800 text-sm bg-transparent hover:bg-slate-100 focus:bg-white focus:ring-2 focus:ring-purple-500 rounded px-2 py-1 border border-transparent hover:border-slate-200 transition w-full max-w-xs"
-              title="點擊直接修改姓名"
+              class="font-semibold text-slate-800 text-sm bg-transparent rounded px-2 py-1 border transition w-full max-w-xs ${
+                isAdmin ? 'hover:bg-slate-100 focus:bg-white focus:ring-2 focus:ring-purple-500 border-transparent hover:border-slate-200' : 'cursor-default border-transparent text-slate-700'
+              }"
+              title="${isAdmin ? '點擊直接修改姓名' : ''}"
             />
           </div>
-          <button onclick="confirmDeleteStudent('${student.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition" title="刪除此學生">
+          <button onclick="confirmDeleteStudent('${student.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition admin-only" title="刪除此學生">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
           </button>
         `;
         container.appendChild(item);
       });
+      updateAdminUI();
     }
 
     function updateStudentName(studentId, newName) {
+      if (!isAdmin) return;
       const trimmed = newName.trim();
       if (!trimmed) {
         showToast("學生姓名不能為空！", "⚠️");
@@ -1142,6 +1354,7 @@
     }
 
     function addNewStudentPrompt() {
+      if (!isAdmin) return;
       const nextNum = appData.students.length + 1;
       showModal({
         title: "新增學生",
@@ -1174,6 +1387,7 @@
     }
 
     function confirmDeleteStudent(studentId) {
+      if (!isAdmin) return;
       const target = appData.students.find(s => s.id === studentId);
       if (!target) return;
 
@@ -1195,14 +1409,16 @@
     }
 
     function resetToDefaultData() {
+      if (!isAdmin) return;
       showModal({
         title: "重設為初始預設資料？",
         bodyHtml: `<p class="text-rose-600 font-bold">警告：此操作將覆蓋現有所有輸入的挑戰紀錄，並恢復為初始預設的 6 位學生與示範資料！</p>`,
         confirmText: "確認重設",
         confirmClass: "bg-rose-600 hover:bg-rose-700 text-white",
         onConfirm: () => {
-          localStorage.removeItem(DEFAULT_STORAGE_KEY);
-          initData();
+          appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+          seedDemoData();
+          saveToStorage();
           renderStudentsView();
           showToast("已成功重設為初始資料！", "🔄");
           return true;
@@ -1211,7 +1427,7 @@
     }
 
     /* ==========================================================================
-       7. 檔案下載與上傳備份 (JSON 匯入匯出)
+       8. 檔案下載與上傳備份
        ========================================================================== */
     function exportData() {
       const now = new Date();
@@ -1233,6 +1449,7 @@
     }
 
     function importData(event) {
+      if (!isAdmin) return;
       const file = event.target.files[0];
       if (!file) return;
 
@@ -1253,7 +1470,7 @@
                 <li>體育項目：${parsed.sportsItems.length} 項</li>
                 <li>益智項目：${parsed.puzzleItems.length} 項</li>
               </ul>
-              <p class="text-xs text-amber-600 mt-3 font-semibold">匯入將會覆寫目前瀏覽器中的紀錄，建議確認後再進行。</p>
+              <p class="text-xs text-amber-600 mt-3 font-semibold">匯入將會覆寫目前雲端與瀏覽器中的紀錄，確定要進行嗎？</p>
             `,
             confirmText: "確認覆寫匯入",
             confirmClass: "bg-emerald-600 hover:bg-emerald-700 text-white",
@@ -1276,7 +1493,7 @@
     }
 
     /* ==========================================================================
-       8. 模態框與 Toast 提示
+       9. 模態框與 Toast 提示
        ========================================================================== */
     let currentModalConfirmCallback = null;
 
@@ -1330,19 +1547,17 @@
 
     function openHelpModal() {
       showModal({
-        title: "GitHub 上架與使用指引",
+        title: "系統使用說明",
         bodyHtml: `
           <div class="space-y-3 text-xs leading-relaxed text-slate-600">
-            <p class="font-bold text-indigo-700">📌 如何發佈到 GitHub Pages？</p>
-            <ol class="list-decimal pl-4 space-y-1">
-              <li>在 GitHub 建立一個公開儲存庫（Repository，例如：<code class="bg-slate-100 px-1 py-0.5 rounded">class-tracker</code>）。</li>
-              <li>將本檔案命名為 <code class="bg-slate-100 px-1 py-0.5 rounded">index.html</code> 並上傳至該儲存庫根目錄。</li>
-              <li>進入該專案的 <strong>Settings</strong> ➔ <strong>Pages</strong>。</li>
-              <li>在 Branch 選擇 <strong>main</strong> 或 <strong>master</strong>，資料夾選 <code class="bg-slate-100 px-1 py-0.5 rounded">/ (root)</code> 並按下 Save。</li>
-              <li>稍候 1~2 分鐘，即可獲得公開網址於班級中隨開隨用！</li>
-            </ol>
-            <p class="font-bold text-indigo-700 pt-2">📌 資料會不會不見？</p>
-            <p>平時輸入皆會<strong>即時自動快取</strong>於本機瀏覽器中。若需要更換裝置、交接或定期備份，請隨時點選右上角的「<strong>下載記錄</strong>」儲存 JSON 檔；到新電腦上點選「<strong>上傳記錄</strong>」即可立刻無縫銜接。</p>
+            <p class="font-bold text-indigo-700">📌 雲端即時同步功能</p>
+            <p>本系統已直接連線至 Firebase Firestore 雲端資料庫。全班同學與家長無論從電腦或平板瀏覽，皆可即時看到最新進度，無需手動重新整理。</p>
+            
+            <p class="font-bold text-indigo-700 pt-2">📌 權限安全機制</p>
+            <p>預設開啟為<strong>訪客唯讀模式</strong>，點擊右上角「<strong>管理登入</strong>」驗證管理密碼後即可解鎖編輯、增刪活動及修改名單權限。管理者登入後亦可點選「改密碼」自行變更密碼。</p>
+
+            <p class="font-bold text-indigo-700 pt-2">📌 離線與備份機制</p>
+            <p>若遇到網路連線異常，系統會自動切換為本機離線快取；您也可以隨時點選右上角「<strong>下載備份</strong>」將完整紀錄以 JSON 檔案儲存至個人電腦中。</p>
           </div>
         `,
         confirmText: "瞭解",
@@ -1360,7 +1575,6 @@
         .replace(/'/g, '&#039;');
     }
 
-    // 啟動初始化程序
     window.addEventListener('DOMContentLoaded', () => {
       initData();
       renderDashboard();
